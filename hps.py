@@ -14,14 +14,14 @@ class Hyperparams(dict):
 
 cifar10 = Hyperparams()
 cifar10.width = 384
-cifar10.lr = 0.0002
+cifar10.lr = 0.0001 # 0.0002
 cifar10.zdim = 16
 cifar10.wd = 0.01
 cifar10.dec_blocks = "1x1,4m1,4x2,8m4,8x5,16m8,16x10,32m16,32x21"
 cifar10.enc_blocks = "32x11,32d2,16x6,16d2,8x6,8d2,4x3,4d4,1x3"
 cifar10.warmup_iters = 100
 cifar10.dataset = 'cifar10'
-cifar10.n_batch = 16
+cifar10.n_batch = 4 # 16
 cifar10.ema_rate = 0.9999
 HPARAMS_REGISTRY['cifar10'] = cifar10
 

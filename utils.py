@@ -1,4 +1,4 @@
-from mpi4py import MPI
+
 import os
 import json
 import tempfile
@@ -8,17 +8,6 @@ import time
 import subprocess
 import torch.distributed as dist
 
-
-def allreduce(x, average):
-    if mpi_size() > 1:
-        dist.all_reduce(x, dist.ReduceOp.SUM)
-    return x / mpi_size() if average else x
-
-
-def get_cpu_stats_over_ranks(stat_dict):
-    keys = sorted(stat_dict.keys())
-    allreduced = allreduce(torch.stack([torch.as_tensor(stat_dict[k]).detach().cuda().float() for k in keys]), average=True).cpu()
-    return {k: allreduced[i].item() for (i, k) in enumerate(keys)}
 
 
 class Hyperparams(dict):
@@ -39,8 +28,6 @@ def logger(log_prefix):
     txt_path = f'{log_prefix}.txt'
 
     def log(*args, pprint=False, **kwargs):
-        if mpi_rank() != 0:
-            return
         t = time.ctime()
         argdict = {'time': t}
         if len(args) > 0:
@@ -112,29 +99,3 @@ def tile_images(images, d1=4, d2=4, border=1):
         start_d2 = num_d2 * id2 + border * (num_d2 + 1)
         out[start_d1:start_d1 + id1, start_d2:start_d2 + id2, :] = im
     return out
-
-
-def mpi_size():
-    return MPI.COMM_WORLD.Get_size()
-
-
-def mpi_rank():
-    return MPI.COMM_WORLD.Get_rank()
-
-
-def num_nodes():
-    nn = mpi_size()
-    if nn % 8 == 0:
-        return nn // 8
-    return nn // 8 + 1
-
-
-def gpus_per_node():
-    size = mpi_size()
-    if size > 1:
-        return max(size // num_nodes(), 1)
-    return 1
-
-
-def local_mpi_rank():
-    return mpi_rank() % gpus_per_node()

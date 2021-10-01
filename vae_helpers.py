@@ -163,3 +163,6 @@ class DmolNet(nn.Module):
         xhat = xhat.detach().cpu().numpy()
         xhat = np.minimum(np.maximum(0.0, xhat), 255.0).astype(np.uint8)
         return xhat
+    
+    def _sample(self, px_z):
+        return sample_from_discretized_mix_logistic(self.forward(px_z), self.H.num_mixtures)

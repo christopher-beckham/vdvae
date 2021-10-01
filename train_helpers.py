@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from mpi4py import MPI
+
 import socket
 import argparse
 import os
@@ -8,14 +8,12 @@ import json
 import subprocess
 from hps import Hyperparams, parse_args_and_update_hparams, add_vae_arguments
 from utils import (logger,
-                   local_mpi_rank,
-                   mpi_size,
-                   maybe_download,
-                   mpi_rank)
+                   maybe_download)
 from data import mkdir_p
 from contextlib import contextmanager
 import torch.distributed as dist
-from apex.optimizers import FusedAdam as AdamW
+#from apex.optimizers import FusedAdam as AdamW
+from torch.optim import AdamW
 from vae import VAE
 from torch.nn.parallel.distributed import DistributedDataParallel
 
@@ -35,20 +33,22 @@ def save_model(path, vae, ema_vae, optimizer, H):
     subprocess.check_output(['cp', from_log, to_log])
 
 
+"""
 def accumulate_stats(stats, frequency):
     z = {}
     for k in stats[-1]:
         if k in ['distortion_nans', 'rate_nans', 'skipped_updates', 'gcskip']:
             z[k] = np.sum([a[k] for a in stats[-frequency:]])
         elif k == 'grad_norm':
-            vals = [a[k] for a in stats[-frequency:]]
+            vals = [a[k].item() for a in stats[-frequency:]]            
             finites = np.array(vals)[np.isfinite(vals)]
             if len(finites) == 0:
                 z[k] = 0.0
             else:
                 z[k] = np.max(finites)
         elif k == 'elbo':
-            vals = [a[k] for a in stats[-frequency:]]
+            vals = [a[k].item() for a in stats[-frequency:]]
+            print(vals)
             finites = np.array(vals)[np.isfinite(vals)]
             z['elbo'] = np.mean(vals)
             z['elbo_filtered'] = np.mean(finites)
@@ -57,25 +57,12 @@ def accumulate_stats(stats, frequency):
         else:
             z[k] = np.mean([a[k] for a in stats[-frequency:]])
     return z
-
+"""
 
 def linear_warmup(warmup_iters):
     def f(iteration):
         return 1.0 if iteration > warmup_iters else iteration / warmup_iters
     return f
-
-
-def setup_mpi(H):
-    H.mpi_size = mpi_size()
-    H.local_rank = local_mpi_rank()
-    H.rank = mpi_rank()
-    os.environ["RANK"] = str(H.rank)
-    os.environ["WORLD_SIZE"] = str(H.mpi_size)
-    os.environ["MASTER_PORT"] = str(H.port)
-    # os.environ["NCCL_LL_THRESHOLD"] = "0"
-    os.environ["MASTER_ADDR"] = MPI.COMM_WORLD.bcast(socket.gethostname(), root=0)
-    torch.cuda.set_device(H.local_rank)
-    dist.init_process_group(backend='nccl', init_method=f"env://")
 
 
 def distributed_maybe_download(path, local_rank, mpi_size):
@@ -87,16 +74,6 @@ def distributed_maybe_download(path, local_rank, mpi_size):
     return fp
 
 
-@contextmanager
-def first_rank_first(local_rank, mpi_size):
-    if mpi_size > 1 and local_rank > 0:
-        dist.barrier()
-
-    try:
-        yield
-    finally:
-        if mpi_size > 1 and local_rank == 0:
-            dist.barrier()
 
 
 def setup_save_dirs(H):
@@ -110,7 +87,7 @@ def set_up_hyperparams(s=None):
     parser = argparse.ArgumentParser()
     parser = add_vae_arguments(parser)
     parse_args_and_update_hparams(H, parser, s=s)
-    setup_mpi(H)
+    #setup_mpi(H)
     setup_save_dirs(H)
     logprint = logger(H.logdir)
     for i, k in enumerate(sorted(H)):
@@ -164,7 +141,7 @@ def load_vaes(H, logprint):
     vae = vae.cuda(H.local_rank)
     ema_vae = ema_vae.cuda(H.local_rank)
 
-    vae = DistributedDataParallel(vae, device_ids=[H.local_rank], output_device=H.local_rank)
+    #vae = DistributedDataParallel(vae, device_ids=[H.local_rank], output_device=H.local_rank)
 
     if len(list(vae.named_parameters())) != len(list(vae.parameters())):
         raise ValueError('Some params are not named. Please name all params.')
